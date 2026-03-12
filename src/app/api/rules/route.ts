@@ -16,7 +16,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { serviceCode, description, requireInss, requireFed } = body;
+    const { serviceCode, description, requireInss, requireFed, naturezaRendimento } = body;
 
     const newRule = await prisma.taxRule.create({
       data: {
@@ -24,6 +24,7 @@ export async function POST(request: Request) {
         description,
         requireInss,
         requireFed,
+        naturezaRendimento,
       }
     });
 

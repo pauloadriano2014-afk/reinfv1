@@ -42,17 +42,17 @@ model Competence {
 }
 
 model Invoice {
-  id              String       @id @default(uuid())
-  invoiceNumber   String
-  issuerCnpj      String
-  providerCnpj    String
-  serviceCode     String?
-  serviceValue    Float
-  retentionValue  Float
-  competenceId    String
-  competence      Competence   @relation(fields: [competenceId], references: [id], onDelete: Cascade)
-  createdAt       DateTime     @default(now())
-  divergences     Divergence[]
+  id             String       @id @default(uuid())
+  invoiceNumber  String
+  issuerCnpj     String
+  providerCnpj   String
+  serviceCode    String?
+  serviceValue   Float
+  retentionValue Float
+  competenceId   String
+  competence     Competence   @relation(fields: [competenceId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  divergences    Divergence[]
 }
 
 model ReinfEvent {
@@ -73,7 +73,7 @@ model Divergence {
   errorMessage      String
   expectedRetention Float?
   reportedRetention Float?
-  resolved          Boolean    @default(false) // <-- ADICIONE ESTA LINHA
+  resolved          Boolean    @default(false)
   invoiceId         String?
   invoice           Invoice?   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   competenceId      String
@@ -82,11 +82,12 @@ model Divergence {
 }
 
 model TaxRule {
-  id              String   @id @default(cuid())
-  serviceCode     String   @unique // ex: "07.02" ou "17.06"
-  description     String   // ex: "Execução por empreitada"
-  requireInss     Boolean  @default(false) // Retém Previdência (R-2010/2020)?
-  requireFed      Boolean  @default(false) // Retém IR/CSLL/PIS/COFINS (R-4020)?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  serviceCode        String   @unique
+  description        String
+  requireInss        Boolean  @default(false)
+  requireFed         Boolean  @default(false)
+  naturezaRendimento String?  
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }

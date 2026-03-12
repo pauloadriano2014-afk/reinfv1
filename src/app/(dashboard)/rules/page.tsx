@@ -9,12 +9,14 @@ type TaxRule = {
   description: string;
   requireInss: boolean;
   requireFed: boolean;
+  naturezaRendimento?: string;
 };
 
 export default function RulesPage() {
   const [rules, setRules] = useState<TaxRule[]>([]);
   const [serviceCode, setServiceCode] = useState('');
   const [description, setDescription] = useState('');
+  const [naturezaRendimento, setNaturezaRendimento] = useState('');
   const [requireInss, setRequireInss] = useState(false);
   const [requireFed, setRequireFed] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -43,12 +45,13 @@ export default function RulesPage() {
       const response = await fetch('/api/rules', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ serviceCode, description, requireInss, requireFed }),
+        body: JSON.stringify({ serviceCode, description, requireInss, requireFed, naturezaRendimento }),
       });
 
       if (response.ok) {
         setServiceCode('');
         setDescription('');
+        setNaturezaRendimento('');
         setRequireInss(false);
         setRequireFed(false);
         fetchRules();
@@ -83,7 +86,7 @@ export default function RulesPage() {
             <Scale className="text-purple-600" />
             Regras Fiscais (Cérebro Tributário)
           </h2>
-          <p className="text-slate-500 mt-1">Parametrize as retenções por Código de Serviço (LC 116/03).</p>
+          <p className="text-slate-500 mt-1">Parametrize as retenções e a Natureza de Rendimento (Tabela 01 REINF).</p>
         </div>
       </div>
 
@@ -91,7 +94,7 @@ export default function RulesPage() {
         <ShieldCheck className="shrink-0 mt-0.5 text-purple-600" />
         <div className="text-sm">
           <p className="font-bold mb-1">Como isso funciona?</p>
-          <p>O sistema cruzará o código de serviço dos XMLs das Notas Fiscais com as regras abaixo. Se a nota tiver o código "07.02" e você marcou "Exige INSS", o sistema auditará automaticamente a falta do evento R-2010.</p>
+          <p>O sistema cruzará o código de serviço dos XMLs com as regras abaixo. Preencha a Natureza de Rendimento para que a auditoria entregue o código exato exigido pelo sistema Domínio.</p>
         </div>
       </div>
 
@@ -99,9 +102,9 @@ export default function RulesPage() {
         <h3 className="text-lg font-semibold text-slate-800 mb-4">Cadastrar Nova Regra</h3>
         
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="md:col-span-1">
-              <label className="block text-sm font-medium text-slate-700 mb-1">Código do Serviço</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Cód. Serviço</label>
               <input
                 type="text"
                 required
@@ -118,8 +121,18 @@ export default function RulesPage() {
                 required
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Ex: Execução por empreitada ou subempreitada"
+                placeholder="Ex: Execução por empreitada"
                 className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
+              />
+            </div>
+            <div className="md:col-span-1">
+              <label className="block text-sm font-medium text-slate-700 mb-1">Natureza (Tab. 01)</label>
+              <input
+                type="text"
+                value={naturezaRendimento}
+                onChange={(e) => setNaturezaRendimento(e.target.value)}
+                placeholder="Ex: 15001"
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none bg-purple-50"
               />
             </div>
           </div>
@@ -147,7 +160,7 @@ export default function RulesPage() {
               />
               <div>
                 <span className="block text-sm font-bold text-slate-700">Exige Impostos Federais</span>
-                <span className="block text-xs text-slate-500">Gera alerta para o R-4020 (IR/CSLL/PIS/COF)</span>
+                <span className="block text-xs text-slate-500">Gera alerta para o R-4020</span>
               </div>
             </label>
           </div>
@@ -171,15 +184,16 @@ export default function RulesPage() {
             <tr className="bg-slate-50 border-b border-slate-200">
               <th className="px-6 py-4 text-sm font-medium text-slate-500">Código</th>
               <th className="px-6 py-4 text-sm font-medium text-slate-500">Descrição</th>
+              <th className="px-6 py-4 text-sm font-medium text-slate-500 text-center">Natureza (Tab. 01)</th>
               <th className="px-6 py-4 text-sm font-medium text-slate-500 text-center">Retém INSS?</th>
-              <th className="px-6 py-4 text-sm font-medium text-slate-500 text-center">Retém Federais?</th>
+              <th className="px-6 py-4 text-sm font-medium text-slate-500 text-center">Retém Fed.?</th>
               <th className="px-6 py-4 text-sm font-medium text-slate-500 text-right">Ações</th>
             </tr>
           </thead>
           <tbody>
             {rules.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-6 py-8 text-center text-slate-500">
+                <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
                   <div className="flex flex-col items-center justify-center gap-2">
                     <AlertCircle className="text-slate-300" size={32} />
                     <p>Nenhuma regra cadastrada. O sistema fará apenas auditoria básica.</p>
@@ -191,6 +205,9 @@ export default function RulesPage() {
                 <tr key={rule.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors">
                   <td className="px-6 py-4 text-purple-700 font-bold">{rule.serviceCode}</td>
                   <td className="px-6 py-4 text-slate-700 text-sm font-medium">{rule.description}</td>
+                  <td className="px-6 py-4 text-center font-mono text-sm text-slate-600">
+                    {rule.naturezaRendimento || '-'}
+                  </td>
                   <td className="px-6 py-4 text-center">
                     <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${rule.requireInss ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
                       {rule.requireInss ? 'SIM' : 'NÃO'}
