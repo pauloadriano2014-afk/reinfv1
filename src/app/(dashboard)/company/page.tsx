@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Building2, Plus, Trash2, Pencil } from 'lucide-react';
+import { Building2, Plus, Trash2, Pencil, Search } from 'lucide-react';
 import EditCompanyModal from '@/components/EditCompanyModal';
 
 type Company = {
@@ -14,6 +14,7 @@ export default function CompanyPage() {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [name, setName] = useState('');
   const [cnpj, setCnpj] = useState('');
+  const [searchTerm, setSearchTerm] = useState(''); // Estado para a busca
   const [loading, setLoading] = useState(false);
   
   // Estados para o Modal de Edição
@@ -82,6 +83,12 @@ export default function CompanyPage() {
     setIsEditModalOpen(true);
   };
 
+  // Lógica de filtragem em tempo real
+  const filteredCompanies = companies.filter((company) => 
+    company.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    company.cnpj.includes(searchTerm)
+  );
+
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
       <div className="flex items-center justify-between">
@@ -94,6 +101,7 @@ export default function CompanyPage() {
         </div>
       </div>
 
+      {/* Card do Formulário */}
       <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
         <h3 className="text-lg font-semibold text-slate-800 mb-4">Cadastrar Nova Empresa</h3>
         
@@ -133,6 +141,21 @@ export default function CompanyPage() {
         </form>
       </div>
 
+      {/* Barra de Busca */}
+      <div className="relative">
+        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          <Search className="h-5 w-5 text-slate-400" />
+        </div>
+        <input
+          type="text"
+          placeholder="Buscar por nome ou CNPJ..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg leading-5 bg-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 sm:text-sm transition-all"
+        />
+      </div>
+
+      {/* Lista de Empresas */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <table className="w-full text-left border-collapse">
           <thead>
@@ -143,14 +166,14 @@ export default function CompanyPage() {
             </tr>
           </thead>
           <tbody>
-            {companies.length === 0 ? (
+            {filteredCompanies.length === 0 ? (
               <tr>
                 <td colSpan={3} className="px-6 py-8 text-center text-slate-500">
-                  Nenhuma empresa cadastrada ainda.
+                  {searchTerm ? 'Nenhuma empresa encontrada para esta busca.' : 'Nenhuma empresa cadastrada ainda.'}
                 </td>
               </tr>
             ) : (
-              companies.map((company) => (
+              filteredCompanies.map((company) => (
                 <tr key={company.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
                   <td className="px-6 py-4 text-slate-800 font-medium">{company.name}</td>
                   <td className="px-6 py-4 text-slate-600">{company.cnpj}</td>
