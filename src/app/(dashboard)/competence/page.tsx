@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { CalendarDays, Plus, Trash2 } from 'lucide-react';
+import { CalendarDays, Plus, Trash2, Pencil } from 'lucide-react';
+import EditCompetenceModal from '@/components/EditCompetenceModal';
 
 type Company = {
   id: string;
@@ -25,6 +26,10 @@ export default function CompetencePage() {
   const [year, setYear] = useState(new Date().getFullYear().toString());
   const [loading, setLoading] = useState(false);
 
+  // Estados para o Modal de Edição
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [currentCompetence, setCurrentCompetence] = useState<Competence | null>(null);
+
   useEffect(() => {
     fetchCompanies();
     fetchCompetences();
@@ -32,11 +37,9 @@ export default function CompetencePage() {
 
   const fetchCompanies = async () => {
     try {
-      // Adicionamos ?t=... para garantir que o navegador busque dados novos
       const response = await fetch(`/api/companies?t=${Date.now()}`);
       if (response.ok) {
         const data = await response.json();
-        console.log("Empresas carregadas:", data); // Isso vai aparecer no F12 do navegador
         setCompanies(data);
       }
     } catch (error) {
@@ -63,9 +66,7 @@ export default function CompetencePage() {
     try {
       const response = await fetch('/api/competences', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           companyId: selectedCompany,
           month: Number(month),
@@ -75,7 +76,6 @@ export default function CompetencePage() {
 
       if (response.ok) {
         setMonth('');
-        // Mantém a empresa e o ano selecionados para facilitar múltiplos cadastros
         fetchCompetences();
       } else {
         const errorData = await response.json();
@@ -86,6 +86,27 @@ export default function CompetencePage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Tem certeza que deseja excluir esta competência? Todas as notas vinculadas serão afetadas.')) return;
+
+    try {
+      const response = await fetch(`/api/competences/${id}`, { method: 'DELETE' });
+      if (response.ok) {
+        fetchCompetences();
+      } else {
+        const error = await response.json();
+        alert(error.error || 'Erro ao excluir competência.');
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const openEditModal = (comp: Competence) => {
+    setCurrentCompetence(comp);
+    setIsEditModalOpen(true);
   };
 
   return (
@@ -111,7 +132,7 @@ export default function CompetencePage() {
               required
               value={selectedCompany}
               onChange={(e) => setSelectedCompany(e.target.value)}
-              className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+              className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
             >
               <option value="" disabled>Selecione uma empresa...</option>
               {companies.map((company) => (
@@ -128,7 +149,7 @@ export default function CompetencePage() {
               required
               value={month}
               onChange={(e) => setMonth(e.target.value)}
-              className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+              className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
             >
               <option value="" disabled>Mês</option>
               {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
@@ -148,7 +169,7 @@ export default function CompetencePage() {
               max="2100"
               value={year}
               onChange={(e) => setYear(e.target.value)}
-              className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
@@ -189,8 +210,17 @@ export default function CompetencePage() {
                   <td className="px-6 py-4 text-slate-600 font-medium">
                     {comp.month.toString().padStart(2, '0')}/{comp.year}
                   </td>
-                  <td className="px-6 py-4 text-right">
-                    <button className="text-red-500 hover:text-red-700 p-2 rounded-md hover:bg-red-50 transition-colors">
+                  <td className="px-6 py-4 text-right flex justify-end gap-2">
+                    <button 
+                      onClick={() => openEditModal(comp)}
+                      className="text-blue-500 hover:text-blue-700 p-2 rounded-md hover:bg-blue-50 transition-colors"
+                    >
+                      <Pencil size={18} />
+                    </button>
+                    <button 
+                      onClick={() => handleDelete(comp.id)}
+                      className="text-red-500 hover:text-red-700 p-2 rounded-md hover:bg-red-50 transition-colors"
+                    >
                       <Trash2 size={18} />
                     </button>
                   </td>
@@ -200,6 +230,14 @@ export default function CompetencePage() {
           </tbody>
         </table>
       </div>
+
+      {/* Modal de Edição */}
+      <EditCompetenceModal 
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        onSave={fetchCompetences}
+        competence={currentCompetence}
+      />
     </div>
   );
 }
