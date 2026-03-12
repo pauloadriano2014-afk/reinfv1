@@ -21,7 +21,7 @@ model Company {
   cnpj        String       @unique
   name        String
   userId      String
-  user        User         @relation(fields: [userId], references: [id])
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
   competences Competence[]
@@ -32,7 +32,7 @@ model Competence {
   month       Int
   year        Int
   companyId   String
-  company     Company      @relation(fields: [companyId], references: [id])
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
   createdAt   DateTime     @default(now())
   invoices    Invoice[]
   reinfEvents ReinfEvent[]
@@ -42,29 +42,29 @@ model Competence {
 }
 
 model Invoice {
-  id                 String       @id @default(uuid())
-  invoiceNumber      String
-  issuerCnpj         String
-  providerCnpj       String
-  serviceCode        String?
-  serviceValue       Float
-  retentionValue     Float
-  competenceId       String
-  competence         Competence   @relation(fields: [competenceId], references: [id])
-  createdAt          DateTime     @default(now())
-  divergences        Divergence[]
+  id              String       @id @default(uuid())
+  invoiceNumber   String
+  issuerCnpj      String
+  providerCnpj    String
+  serviceCode     String?
+  serviceValue    Float
+  retentionValue  Float
+  competenceId    String
+  competence      Competence   @relation(fields: [competenceId], references: [id], onDelete: Cascade)
+  createdAt       DateTime     @default(now())
+  divergences     Divergence[]
 }
 
 model ReinfEvent {
-  id               String       @id @default(uuid())
-  eventType        String       // R-2010 ou R-2020
+  id               String     @id @default(uuid())
+  eventType        String     // R-2010 ou R-2020
   cnpj             String
   invoiceReference String
   serviceValue     Float
   retentionValue   Float
   competenceId     String
-  competence       Competence   @relation(fields: [competenceId], references: [id])
-  createdAt        DateTime     @default(now())
+  competence       Competence @relation(fields: [competenceId], references: [id], onDelete: Cascade)
+  createdAt        DateTime   @default(now())
 }
 
 model Divergence {
@@ -74,8 +74,8 @@ model Divergence {
   expectedRetention Float?
   reportedRetention Float?
   invoiceId         String?
-  invoice           Invoice?   @relation(fields: [invoiceId], references: [id])
+  invoice           Invoice?   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   competenceId      String
-  competence        Competence @relation(fields: [competenceId], references: [id])
+  competence        Competence @relation(fields: [competenceId], references: [id], onDelete: Cascade)
   createdAt         DateTime   @default(now())
 }

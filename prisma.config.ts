@@ -1,9 +1,11 @@
-import "dotenv/config";
-import { defineConfig, env } from "prisma/config";
+import { defineConfig } from '@prisma/config';
+import * as dotenv from 'dotenv';
+
+// Isso força o Prisma a ler o seu arquivo .env local
+dotenv.config();
 
 export default defineConfig({
-  schema: "prisma/schema.prisma",
   datasource: {
-    url: env("DATABASE_URL"),
+    url: process.env.DATABASE_URL,
   },
 });
