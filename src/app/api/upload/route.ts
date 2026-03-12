@@ -4,11 +4,16 @@ import { parseNfseXml, parseReinfXml } from '@/utils/parser';
 import { runValidationEngine, ValidationInvoice, ValidationReinfEvent } from '@/utils/validation';
 import { findOrCreateTarget } from '@/utils/upload-helper';
 
+// Tipo interno para guardar as retenções detalhadas em memória durante a validação
+interface UploadMemoryInvoice extends ValidationInvoice {
+  inssRetention: number;
+  fedRetention: number;
+}
+
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
     
-    // IDs Manuais (serão nulos se for Super Upload)
     const manualCompanyId = formData.get('companyId') as string;
     const manualCompetenceId = formData.get('competenceId') as string;
 
@@ -19,18 +24,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Nenhum arquivo enviado.' }, { status: 400 });
     }
 
-    // Estrutura para o Log de Processamento
     const summary = {
       processed: {} as Record<string, { company: string; invoices: number; events: number }>,
       errors: [] as { file: string; reason: string }[]
     };
 
-    // Mapas para agrupar dados por competência
-    const invoicesByCompetence: Record<string, ValidationInvoice[]> = {};
+    const invoicesByCompetence: Record<string, UploadMemoryInvoice[]> = {};
     const eventsByCompetence: Record<string, ValidationReinfEvent[]> = {};
     const processedCompetences = new Set<string>();
 
-    // 1. Processa NFS-e (Notas Fiscais)
     for (const file of nfseFiles) {
       try {
         const xmlString = await file.text();
@@ -57,7 +59,6 @@ export async function POST(request: Request) {
               }
             });
 
-            // Alimenta o Log
             if (!summary.processed[target.competenceId]) {
               const comp = await prisma.competence.findUnique({ 
                 where: { id: target.competenceId }, 
@@ -78,20 +79,21 @@ export async function POST(request: Request) {
               providerCnpj: invoice.providerCnpj,
               retentionValue: invoice.retentionValue,
               serviceCode: invoice.serviceCode || undefined,
+              inssRetention: parsedData.inssRetention,
+              fedRetention: parsedData.fedRetention,
             });
             processedCompetences.add(target.competenceId);
           } else {
-            summary.errors.push({ file: file.name, reason: `CNPJ ${parsedData.issuerCnpj} não cadastrado no sistema.` });
+            summary.errors.push({ file: file.name, reason: `CNPJ ${parsedData.issuerCnpj} não cadastrado.` });
           }
         } else {
-          summary.errors.push({ file: file.name, reason: 'XML de NFS-e inválido ou estrutura não reconhecida.' });
+          summary.errors.push({ file: file.name, reason: 'XML de NFS-e inválido.' });
         }
       } catch (err) {
-        summary.errors.push({ file: file.name, reason: 'Erro crítico na leitura do arquivo XML da nota.' });
+        summary.errors.push({ file: file.name, reason: 'Erro na leitura do XML da nota.' });
       }
     }
 
-    // 2. Processa Eventos REINF (Opcional a partir de agora)
     for (const file of reinfFiles) {
       try {
         const xmlString = await file.text();
@@ -117,7 +119,6 @@ export async function POST(request: Request) {
               }
             });
 
-            // Alimenta o Log
             if (!summary.processed[target.competenceId]) {
               const comp = await prisma.competence.findUnique({ 
                 where: { id: target.competenceId }, 
@@ -140,34 +141,58 @@ export async function POST(request: Request) {
             });
             processedCompetences.add(target.competenceId);
           } else {
-            summary.errors.push({ file: file.name, reason: `CNPJ ${parsedData.cnpj} não cadastrado no sistema.` });
+            summary.errors.push({ file: file.name, reason: `CNPJ ${parsedData.cnpj} não cadastrado.` });
           }
         } else {
-          summary.errors.push({ file: file.name, reason: 'XML de evento REINF inválido ou estrutura não reconhecida.' });
+          summary.errors.push({ file: file.name, reason: 'XML REINF inválido.' });
         }
       } catch (err) {
-        summary.errors.push({ file: file.name, reason: 'Erro crítico na leitura do arquivo XML do REINF.' });
+        summary.errors.push({ file: file.name, reason: 'Erro na leitura do REINF.' });
       }
     }
 
-    // 3. Validação Cruzada & Auditoria Prévia
     let totalDivergences = 0;
     
     for (const compId of processedCompetences) {
       const invoices = invoicesByCompetence[compId] || [];
       const events = eventsByCompetence[compId] || [];
 
-      // NOVO FLUXO: Se não houver REINF, geramos alertas de "Ação Necessária" para cada nota com retenção
+      // NOVO FLUXO: Auditoria Prévia Separada por Evento!
       if (invoices.length > 0 && events.length === 0) {
-        const pendingActions = invoices
-          .filter(inv => inv.retentionValue && inv.retentionValue > 0)
-          .map(inv => ({
-            status: 'WARNING' as const,
-            errorMessage: `Ação Pendente: Declarar retenção no EFD-Reinf para a Nota ${inv.invoiceNumber}.`,
-            expectedRetention: inv.retentionValue,
-            reportedRetention: 0, // Zero porque nada foi enviado ainda
-            invoiceId: inv.id,
-          }));
+        const pendingActions: any[] = [];
+        
+        invoices.forEach(inv => {
+          // Checa se tem INSS
+          if (inv.inssRetention > 0) {
+            pendingActions.push({
+              status: 'WARNING',
+              errorMessage: `[R-2010/2020] Falta lançar retenção de INSS da Nota ${inv.invoiceNumber}.`,
+              expectedRetention: inv.inssRetention,
+              reportedRetention: 0,
+              invoiceId: inv.id,
+            });
+          }
+          // Checa se tem Impostos Federais
+          if (inv.fedRetention > 0) {
+            pendingActions.push({
+              status: 'WARNING',
+              errorMessage: `[R-4020] Falta lançar retenções Federais (IR/CSLL/PIS/COF) da Nota ${inv.invoiceNumber}.`,
+              expectedRetention: inv.fedRetention,
+              reportedRetention: 0,
+              invoiceId: inv.id,
+            });
+          }
+          // Fallback de segurança para retenções genéricas não identificadas
+          if (inv.inssRetention === 0 && inv.fedRetention === 0 && inv.retentionValue > 0) {
+            pendingActions.push({
+              status: 'WARNING',
+              errorMessage: `[Ação Pendente] Declarar retenção genérica no EFD-Reinf da Nota ${inv.invoiceNumber}.`,
+              expectedRetention: inv.retentionValue,
+              reportedRetention: 0,
+              invoiceId: inv.id,
+            });
+          }
+        });
 
         if (pendingActions.length > 0) {
           totalDivergences += pendingActions.length;
@@ -183,7 +208,6 @@ export async function POST(request: Request) {
           });
         }
       } 
-      // FLUXO NORMAL: Existem Notas e Eventos REINF para cruzar
       else if (invoices.length > 0 || events.length > 0) {
         const divergences = runValidationEngine(invoices, events);
         

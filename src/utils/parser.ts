@@ -6,6 +6,8 @@ export type ParsedInvoice = {
   issuerCnpj: string;
   serviceValue: number;
   retentionValue: number;
+  inssRetention: number; // NOVO: Guarda o INSS separado
+  fedRetention: number;  // NOVO: Guarda IR+CSLL+PIS+COFINS
   serviceCode?: string;
 };
 
@@ -17,14 +19,12 @@ export type ParsedReinfEvent = {
   retentionValue: number;
 };
 
-// Função para extrair o valor limpo (lida com os atributos criados pelo xml2js)
 function extractValue(val: any): string {
   if (typeof val === 'object' && val !== null && val._) return String(val._);
   if (typeof val === 'string' || typeof val === 'number') return String(val);
   return '';
 }
 
-// "Achatador" de objetos: Transforma um XML complexo num formato "Caminho = Valor"
 function flattenObject(ob: any, prefix = ''): Record<string, string> {
   let toReturn: Record<string, string> = {};
   for (const i in ob) {
@@ -47,13 +47,11 @@ function flattenObject(ob: any, prefix = ''): Record<string, string> {
   return toReturn;
 }
 
-// Limpa pontuações
 function cleanCnpj(cnpj: string): string {
   if (!cnpj) return '';
   return cnpj.replace(/\D/g, '');
 }
 
-// Converte valores BR (1.000,50) ou US (1000.50) para Float
 function parseBrazilianNumber(val: string): number {
   if (!val) return 0;
   if (val.includes('.') && !val.includes(',')) return parseFloat(val);
@@ -67,25 +65,20 @@ export async function parseNfseXml(xmlString: string): Promise<ParsedInvoice | n
     const flatMap = flattenObject(result);
     const keys = Object.keys(flatMap);
 
-    // Busca inteligente usando Expressões Regulares
     const findVal = (regex: RegExp): string => {
       const matchedKey = keys.find(k => regex.test(k));
       return matchedKey ? flatMap[matchedKey] : '';
     };
 
-    // Mapeamento flexível das tags (AGORA SUPORTA O PADRÃO NACIONAL SPED)
     const invoiceNumber = findVal(/\.(Numero|numeroNfse|nNF|nNFSe|NumeroNota|num_nota)$/i);
     
-    // CNPJs (Padrão antigo e novo "emit" e "toma")
     let providerCnpj = findVal(/\.(prestador|emit|emitente).*\.(cnpj|cpf)$/i);
     if (!providerCnpj) providerCnpj = findVal(/\.cnpj$/i);
 
     const issuerCnpj = findVal(/\.(tomador|toma|destinatario).*\.(cnpj|cpf)$/i);
-
-    // Valores (vServ é o padrão nacional novo)
     const serviceValueStr = findVal(/\.(ValorServicos|vlrServicos|vNF|ValorTotal|valor_servico|vServ|vBC)$/i);
     
-    // Varredura de Retenções (Incluindo Padrão Nacional: vRetIRRF, vRetCSLL, vPis, vCofins)
+    // Separação dos Impostos
     const inss = parseBrazilianNumber(findVal(/\.(ValorInss|vlrInss|vRetPrev|vRetINSS|vINSS)$/i));
     const ir = parseBrazilianNumber(findVal(/\.(ValorIr|vlrIR|vlrIrrf|vRetIRRF|vIRRF)$/i));
     const csll = parseBrazilianNumber(findVal(/\.(ValorCsll|vlrCSLL|vRetCSLL|vCSLL)$/i));
@@ -94,15 +87,15 @@ export async function parseNfseXml(xmlString: string): Promise<ParsedInvoice | n
     const issRetido = parseBrazilianNumber(findVal(/\.(ValorIssRetido|vlrIssRet|vISSRet)$/i));
     const genRetencao = parseBrazilianNumber(findVal(/\.(ValorRetencao|vlrRetencao|val_retencao)$/i));
 
-    // Soma tudo para mostrar a retenção total esperada
-    let totalRetention = inss + ir + csll + pis + cofins + issRetido;
+    const inssRetention = inss;
+    const fedRetention = ir + csll + pis + cofins;
+    
+    let totalRetention = inssRetention + fedRetention + issRetido;
     if (totalRetention === 0 && genRetencao > 0) totalRetention = genRetencao;
 
     const serviceCode = findVal(/\.(ItemListaServico|codigoServico|cServ|cod_servico|cTribNac)$/i);
 
-    // Se faltar o básico, rejeita
     if (!invoiceNumber || (!providerCnpj && !issuerCnpj) || !serviceValueStr) {
-      console.warn('XML ignorado: Estrutura não reconhecida ou faltam dados obrigatórios.');
       return null;
     }
 
@@ -112,6 +105,8 @@ export async function parseNfseXml(xmlString: string): Promise<ParsedInvoice | n
       issuerCnpj: cleanCnpj(issuerCnpj),
       serviceValue: parseBrazilianNumber(serviceValueStr),
       retentionValue: totalRetention,
+      inssRetention,
+      fedRetention,
       serviceCode: serviceCode || undefined,
     };
   } catch (error) {
