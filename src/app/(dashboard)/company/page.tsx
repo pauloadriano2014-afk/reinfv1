@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Building2, Plus, Trash2 } from 'lucide-react';
+import { Building2, Plus, Trash2, Pencil } from 'lucide-react';
+import EditCompanyModal from '@/components/EditCompanyModal';
 
 type Company = {
   id: string;
@@ -14,8 +15,11 @@ export default function CompanyPage() {
   const [name, setName] = useState('');
   const [cnpj, setCnpj] = useState('');
   const [loading, setLoading] = useState(false);
+  
+  // Estados para o Modal de Edição
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
 
-  // Busca as empresas ao carregar a página
   useEffect(() => {
     fetchCompanies();
   }, []);
@@ -39,16 +43,14 @@ export default function CompanyPage() {
     try {
       const response = await fetch('/api/companies', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, cnpj }),
       });
 
       if (response.ok) {
         setName('');
         setCnpj('');
-        fetchCompanies(); // Atualiza a lista após criar
+        fetchCompanies();
       } else {
         alert('Erro ao cadastrar empresa. Verifique se o CNPJ já existe.');
       }
@@ -57,6 +59,27 @@ export default function CompanyPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Tem certeza que deseja excluir esta empresa?')) return;
+
+    try {
+      const response = await fetch(`/api/companies/${id}`, { method: 'DELETE' });
+      if (response.ok) {
+        fetchCompanies();
+      } else {
+        const error = await response.json();
+        alert(error.error || 'Erro ao excluir empresa.');
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const openEditModal = (company: Company) => {
+    setSelectedCompany(company);
+    setIsEditModalOpen(true);
   };
 
   return (
@@ -71,7 +94,6 @@ export default function CompanyPage() {
         </div>
       </div>
 
-      {/* Card do Formulário */}
       <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
         <h3 className="text-lg font-semibold text-slate-800 mb-4">Cadastrar Nova Empresa</h3>
         
@@ -83,7 +105,7 @@ export default function CompanyPage() {
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Ex: Minha Empresa LTDA"
             />
           </div>
@@ -95,7 +117,7 @@ export default function CompanyPage() {
               required
               value={cnpj}
               onChange={(e) => setCnpj(e.target.value)}
-              className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Ex: 00000000000100"
             />
           </div>
@@ -111,7 +133,6 @@ export default function CompanyPage() {
         </form>
       </div>
 
-      {/* Lista de Empresas */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <table className="w-full text-left border-collapse">
           <thead>
@@ -133,8 +154,17 @@ export default function CompanyPage() {
                 <tr key={company.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
                   <td className="px-6 py-4 text-slate-800 font-medium">{company.name}</td>
                   <td className="px-6 py-4 text-slate-600">{company.cnpj}</td>
-                  <td className="px-6 py-4 text-right">
-                    <button className="text-red-500 hover:text-red-700 p-2 rounded-md hover:bg-red-50 transition-colors">
+                  <td className="px-6 py-4 text-right flex justify-end gap-2">
+                    <button 
+                      onClick={() => openEditModal(company)}
+                      className="text-blue-500 hover:text-blue-700 p-2 rounded-md hover:bg-blue-50 transition-colors"
+                    >
+                      <Pencil size={18} />
+                    </button>
+                    <button 
+                      onClick={() => handleDelete(company.id)}
+                      className="text-red-500 hover:text-red-700 p-2 rounded-md hover:bg-red-50 transition-colors"
+                    >
                       <Trash2 size={18} />
                     </button>
                   </td>
@@ -144,6 +174,14 @@ export default function CompanyPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Modal de Edição */}
+      <EditCompanyModal 
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        onSave={fetchCompanies}
+        company={selectedCompany}
+      />
     </div>
   );
 }
