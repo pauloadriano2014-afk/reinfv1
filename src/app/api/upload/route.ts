@@ -25,12 +25,12 @@ export async function POST(request: Request) {
       errors: [] as { file: string; reason: string }[]
     };
 
-    // Mapas para agrupar dados por competência (para a validação cruzada)
+    // Mapas para agrupar dados por competência
     const invoicesByCompetence: Record<string, ValidationInvoice[]> = {};
     const eventsByCompetence: Record<string, ValidationReinfEvent[]> = {};
     const processedCompetences = new Set<string>();
 
-    // 1. Processa NFS-e
+    // 1. Processa NFS-e (Notas Fiscais)
     for (const file of nfseFiles) {
       try {
         const xmlString = await file.text();
@@ -81,17 +81,17 @@ export async function POST(request: Request) {
             });
             processedCompetences.add(target.competenceId);
           } else {
-            summary.errors.push({ file: file.name, reason: `CNPJ ${parsedData.issuerCnpj} não cadastrado.` });
+            summary.errors.push({ file: file.name, reason: `CNPJ ${parsedData.issuerCnpj} não cadastrado no sistema.` });
           }
         } else {
-          summary.errors.push({ file: file.name, reason: 'XML de NFS-e inválido ou sem dados compatíveis.' });
+          summary.errors.push({ file: file.name, reason: 'XML de NFS-e inválido ou estrutura não reconhecida.' });
         }
       } catch (err) {
-        summary.errors.push({ file: file.name, reason: 'Erro crítico na leitura do arquivo.' });
+        summary.errors.push({ file: file.name, reason: 'Erro crítico na leitura do arquivo XML da nota.' });
       }
     }
 
-    // 2. Processa Eventos REINF
+    // 2. Processa Eventos REINF (Opcional a partir de agora)
     for (const file of reinfFiles) {
       try {
         const xmlString = await file.text();
@@ -140,23 +140,51 @@ export async function POST(request: Request) {
             });
             processedCompetences.add(target.competenceId);
           } else {
-            summary.errors.push({ file: file.name, reason: `CNPJ ${parsedData.cnpj} não cadastrado.` });
+            summary.errors.push({ file: file.name, reason: `CNPJ ${parsedData.cnpj} não cadastrado no sistema.` });
           }
         } else {
-          summary.errors.push({ file: file.name, reason: 'XML de REINF inválido ou sem dados compatíveis.' });
+          summary.errors.push({ file: file.name, reason: 'XML de evento REINF inválido ou estrutura não reconhecida.' });
         }
       } catch (err) {
-        summary.errors.push({ file: file.name, reason: 'Erro crítico na leitura do arquivo.' });
+        summary.errors.push({ file: file.name, reason: 'Erro crítico na leitura do arquivo XML do REINF.' });
       }
     }
 
-    // 3. Validação Cruzada por Competência
+    // 3. Validação Cruzada & Auditoria Prévia
     let totalDivergences = 0;
+    
     for (const compId of processedCompetences) {
       const invoices = invoicesByCompetence[compId] || [];
       const events = eventsByCompetence[compId] || [];
 
-      if (invoices.length > 0 || events.length > 0) {
+      // NOVO FLUXO: Se não houver REINF, geramos alertas de "Ação Necessária" para cada nota com retenção
+      if (invoices.length > 0 && events.length === 0) {
+        const pendingActions = invoices
+          .filter(inv => inv.retentionValue && inv.retentionValue > 0)
+          .map(inv => ({
+            status: 'WARNING' as const,
+            errorMessage: `Ação Pendente: Declarar retenção no EFD-Reinf para a Nota ${inv.invoiceNumber}.`,
+            expectedRetention: inv.retentionValue,
+            reportedRetention: 0, // Zero porque nada foi enviado ainda
+            invoiceId: inv.id,
+          }));
+
+        if (pendingActions.length > 0) {
+          totalDivergences += pendingActions.length;
+          await prisma.divergence.createMany({
+            data: pendingActions.map((div) => ({
+              status: div.status,
+              errorMessage: div.errorMessage,
+              expectedRetention: div.expectedRetention,
+              reportedRetention: div.reportedRetention,
+              invoiceId: div.invoiceId,
+              competenceId: compId,
+            })),
+          });
+        }
+      } 
+      // FLUXO NORMAL: Existem Notas e Eventos REINF para cruzar
+      else if (invoices.length > 0 || events.length > 0) {
         const divergences = runValidationEngine(invoices, events);
         
         if (divergences.length > 0) {
