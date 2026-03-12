@@ -110,29 +110,29 @@ export default function CompetencePage() {
   };
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
+    <div className="space-y-6 max-w-5xl mx-auto p-4 md:p-0">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-            <CalendarDays className="text-blue-500" />
+            <CalendarDays className="text-purple-600" />
             Competências
           </h2>
           <p className="text-slate-500 mt-1">Gerencie os períodos de apuração por empresa.</p>
         </div>
       </div>
 
-      {/* Card do Formulário */}
+      {/* Card do Formulário - Premium Theme */}
       <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
         <h3 className="text-lg font-semibold text-slate-800 mb-4">Nova Competência</h3>
         
-        <form onSubmit={handleSubmit} className="flex items-end gap-4">
-          <div className="flex-[2]">
+        <form onSubmit={handleSubmit} className="flex flex-col md:flex-row items-end gap-4">
+          <div className="flex-[2] w-full">
             <label className="block text-sm font-medium text-slate-700 mb-1">Empresa</label>
             <select
               required
               value={selectedCompany}
               onChange={(e) => setSelectedCompany(e.target.value)}
-              className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
             >
               <option value="" disabled>Selecione uma empresa...</option>
               {companies.map((company) => (
@@ -143,13 +143,13 @@ export default function CompetencePage() {
             </select>
           </div>
           
-          <div className="flex-1">
+          <div className="flex-1 w-full">
             <label className="block text-sm font-medium text-slate-700 mb-1">Mês</label>
             <select
               required
               value={month}
               onChange={(e) => setMonth(e.target.value)}
-              className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
             >
               <option value="" disabled>Mês</option>
               {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
@@ -160,7 +160,7 @@ export default function CompetencePage() {
             </select>
           </div>
 
-          <div className="flex-1">
+          <div className="flex-1 w-full">
             <label className="block text-sm font-medium text-slate-700 mb-1">Ano</label>
             <input
               type="number"
@@ -169,14 +169,14 @@ export default function CompetencePage() {
               max="2100"
               value={year}
               onChange={(e) => setYear(e.target.value)}
-              className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
             />
           </div>
 
           <button
             type="submit"
             disabled={loading || companies.length === 0}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md font-medium flex items-center gap-2 transition-colors disabled:opacity-50"
+            className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-md font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50 w-full md:w-auto shadow-sm shadow-purple-100"
           >
             <Plus size={20} />
             {loading ? 'Salvando...' : 'Salvar'}
@@ -213,7 +213,7 @@ export default function CompetencePage() {
                   <td className="px-6 py-4 text-right flex justify-end gap-2">
                     <button 
                       onClick={() => openEditModal(comp)}
-                      className="text-blue-500 hover:text-blue-700 p-2 rounded-md hover:bg-blue-50 transition-colors"
+                      className="text-purple-600 hover:text-purple-800 p-2 rounded-md hover:bg-purple-50 transition-colors"
                     >
                       <Pencil size={18} />
                     </button>

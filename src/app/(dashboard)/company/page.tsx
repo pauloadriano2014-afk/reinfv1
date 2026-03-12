@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Building2, Plus, Trash2, Pencil, Search } from 'lucide-react';
 import EditCompanyModal from '@/components/EditCompanyModal';
+import { maskCNPJ, unmask } from '@/utils/masks';
 
 type Company = {
   id: string;
@@ -14,10 +15,9 @@ export default function CompanyPage() {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [name, setName] = useState('');
   const [cnpj, setCnpj] = useState('');
-  const [searchTerm, setSearchTerm] = useState(''); // Estado para a busca
+  const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
   
-  // Estados para o Modal de Edição
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
 
@@ -45,7 +45,7 @@ export default function CompanyPage() {
       const response = await fetch('/api/companies', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, cnpj }),
+        body: JSON.stringify({ name, cnpj: unmask(cnpj) }),
       });
 
       if (response.ok) {
@@ -83,57 +83,55 @@ export default function CompanyPage() {
     setIsEditModalOpen(true);
   };
 
-  // Lógica de filtragem em tempo real
   const filteredCompanies = companies.filter((company) => 
     company.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    company.cnpj.includes(searchTerm)
+    company.cnpj.includes(unmask(searchTerm))
   );
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
+    <div className="space-y-6 max-w-5xl mx-auto p-4 md:p-0">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-            <Building2 className="text-blue-500" />
+            <Building2 className="text-purple-600" />
             Empresas
           </h2>
           <p className="text-slate-500 mt-1">Gerencie as empresas para validação do REINF.</p>
         </div>
       </div>
 
-      {/* Card do Formulário */}
       <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
         <h3 className="text-lg font-semibold text-slate-800 mb-4">Cadastrar Nova Empresa</h3>
         
-        <form onSubmit={handleSubmit} className="flex items-end gap-4">
-          <div className="flex-1">
+        <form onSubmit={handleSubmit} className="flex flex-col md:flex-row items-end gap-4">
+          <div className="flex-1 w-full">
             <label className="block text-sm font-medium text-slate-700 mb-1">Razão Social / Nome</label>
             <input
               type="text"
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
               placeholder="Ex: Minha Empresa LTDA"
             />
           </div>
           
-          <div className="flex-1">
-            <label className="block text-sm font-medium text-slate-700 mb-1">CNPJ (Apenas números)</label>
+          <div className="flex-1 w-full">
+            <label className="block text-sm font-medium text-slate-700 mb-1">CNPJ</label>
             <input
               type="text"
               required
               value={cnpj}
-              onChange={(e) => setCnpj(e.target.value)}
-              className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Ex: 00000000000100"
+              onChange={(e) => setCnpj(maskCNPJ(e.target.value))}
+              className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+              placeholder="00.000.000/0000-00"
             />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md font-medium flex items-center gap-2 transition-colors disabled:opacity-50"
+            className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-md font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50 w-full md:w-auto shadow-sm shadow-purple-100"
           >
             <Plus size={20} />
             {loading ? 'Salvando...' : 'Salvar'}
@@ -141,7 +139,6 @@ export default function CompanyPage() {
         </form>
       </div>
 
-      {/* Barra de Busca */}
       <div className="relative">
         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
           <Search className="h-5 w-5 text-slate-400" />
@@ -151,11 +148,10 @@ export default function CompanyPage() {
           placeholder="Buscar por nome ou CNPJ..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg leading-5 bg-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 sm:text-sm transition-all"
+          className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 sm:text-sm transition-all"
         />
       </div>
 
-      {/* Lista de Empresas */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <table className="w-full text-left border-collapse">
           <thead>
@@ -169,18 +165,18 @@ export default function CompanyPage() {
             {filteredCompanies.length === 0 ? (
               <tr>
                 <td colSpan={3} className="px-6 py-8 text-center text-slate-500">
-                  {searchTerm ? 'Nenhuma empresa encontrada para esta busca.' : 'Nenhuma empresa cadastrada ainda.'}
+                  {searchTerm ? 'Nenhuma empresa encontrada.' : 'Nenhuma empresa cadastrada.'}
                 </td>
               </tr>
             ) : (
               filteredCompanies.map((company) => (
                 <tr key={company.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
                   <td className="px-6 py-4 text-slate-800 font-medium">{company.name}</td>
-                  <td className="px-6 py-4 text-slate-600">{company.cnpj}</td>
+                  <td className="px-6 py-4 text-slate-600 font-mono text-sm">{maskCNPJ(company.cnpj)}</td>
                   <td className="px-6 py-4 text-right flex justify-end gap-2">
                     <button 
                       onClick={() => openEditModal(company)}
-                      className="text-blue-500 hover:text-blue-700 p-2 rounded-md hover:bg-blue-50 transition-colors"
+                      className="text-purple-600 hover:text-purple-800 p-2 rounded-md hover:bg-purple-50 transition-colors"
                     >
                       <Pencil size={18} />
                     </button>
@@ -198,7 +194,6 @@ export default function CompanyPage() {
         </table>
       </div>
 
-      {/* Modal de Edição */}
       <EditCompanyModal 
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
