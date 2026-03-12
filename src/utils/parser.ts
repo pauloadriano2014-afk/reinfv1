@@ -17,50 +17,102 @@ export type ParsedReinfEvent = {
   retentionValue: number;
 };
 
-// Função auxiliar para procurar uma chave específica em qualquer nível do XML
-function findValueByKey(obj: any, keyToFind: string): string | null {
-  if (typeof obj !== 'object' || obj === null) return null;
-  
-  for (const key in obj) {
-    if (key.toLowerCase() === keyToFind.toLowerCase()) {
-      return Array.isArray(obj[key]) ? obj[key][0] : obj[key];
-    }
-    const result = findValueByKey(obj[key], keyToFind);
-    if (result) return result;
-  }
-  return null;
+// Função para extrair o valor limpo (lida com os atributos criados pelo xml2js)
+function extractValue(val: any): string {
+  if (typeof val === 'object' && val !== null && val._) return String(val._);
+  if (typeof val === 'string' || typeof val === 'number') return String(val);
+  return '';
 }
 
-// Limpa pontuações do CNPJ
-function cleanCnpj(cnpj: string | null): string {
+// "Achatador" de objetos: Transforma um XML complexo num formato "Caminho = Valor"
+function flattenObject(ob: any, prefix = ''): Record<string, string> {
+  let toReturn: Record<string, string> = {};
+  for (const i in ob) {
+    if (!ob.hasOwnProperty(i)) continue;
+    const val = ob[i];
+    const newPrefix = prefix ? `${prefix}.${i}` : i;
+
+    if (Array.isArray(val)) {
+      if (typeof val[0] === 'object' && val[0] !== null && !val[0]._) {
+        Object.assign(toReturn, flattenObject(val[0], newPrefix));
+      } else {
+        toReturn[newPrefix] = extractValue(val[0]);
+      }
+    } else if (typeof val === 'object' && val !== null && !val._) {
+      Object.assign(toReturn, flattenObject(val, newPrefix));
+    } else {
+      toReturn[newPrefix] = extractValue(val);
+    }
+  }
+  return toReturn;
+}
+
+// Limpa pontuações
+function cleanCnpj(cnpj: string): string {
   if (!cnpj) return '';
   return cnpj.replace(/\D/g, '');
+}
+
+// Converte valores BR (1.000,50) ou US (1000.50) para Float
+function parseBrazilianNumber(val: string): number {
+  if (!val) return 0;
+  if (val.includes('.') && !val.includes(',')) return parseFloat(val);
+  const cleaned = val.replace(/\./g, '').replace(',', '.');
+  return parseFloat(cleaned) || 0;
 }
 
 export async function parseNfseXml(xmlString: string): Promise<ParsedInvoice | null> {
   try {
     const result = await parseStringPromise(xmlString, { explicitArray: false });
-    
-    // Busca as tags comuns em NFS-e ABRASF e outras prefeituras
-    const invoiceNumber = findValueByKey(result, 'Numero') || findValueByKey(result, 'numeroNfse');
-    const providerCnpj = findValueByKey(result, 'Cnpj') || findValueByKey(result, 'cnpjPrestador'); 
-    const issuerCnpj = findValueByKey(result, 'CnpjTomador') || findValueByKey(result, 'cnpj'); // Heurística simples
-    const serviceValueStr = findValueByKey(result, 'ValorServicos') || findValueByKey(result, 'vlrServicos');
-    const retentionValueStr = findValueByKey(result, 'ValorInss') || findValueByKey(result, 'vlrInss') || '0';
-    const serviceCode = findValueByKey(result, 'ItemListaServico') || findValueByKey(result, 'codigoServico');
+    const flatMap = flattenObject(result);
+    const keys = Object.keys(flatMap);
 
+    // Busca inteligente usando Expressões Regulares
+    const findVal = (regex: RegExp): string => {
+      const matchedKey = keys.find(k => regex.test(k));
+      return matchedKey ? flatMap[matchedKey] : '';
+    };
+
+    // Mapeamento flexível das tags (AGORA SUPORTA O PADRÃO NACIONAL SPED)
+    const invoiceNumber = findVal(/\.(Numero|numeroNfse|nNF|nNFSe|NumeroNota|num_nota)$/i);
+    
+    // CNPJs (Padrão antigo e novo "emit" e "toma")
+    let providerCnpj = findVal(/\.(prestador|emit|emitente).*\.(cnpj|cpf)$/i);
+    if (!providerCnpj) providerCnpj = findVal(/\.cnpj$/i);
+
+    const issuerCnpj = findVal(/\.(tomador|toma|destinatario).*\.(cnpj|cpf)$/i);
+
+    // Valores (vServ é o padrão nacional novo)
+    const serviceValueStr = findVal(/\.(ValorServicos|vlrServicos|vNF|ValorTotal|valor_servico|vServ|vBC)$/i);
+    
+    // Varredura de Retenções (Incluindo Padrão Nacional: vRetIRRF, vRetCSLL, vPis, vCofins)
+    const inss = parseBrazilianNumber(findVal(/\.(ValorInss|vlrInss|vRetPrev|vRetINSS|vINSS)$/i));
+    const ir = parseBrazilianNumber(findVal(/\.(ValorIr|vlrIR|vlrIrrf|vRetIRRF|vIRRF)$/i));
+    const csll = parseBrazilianNumber(findVal(/\.(ValorCsll|vlrCSLL|vRetCSLL|vCSLL)$/i));
+    const pis = parseBrazilianNumber(findVal(/\.(ValorPis|vlrPIS|vRetPis|vPis)$/i));
+    const cofins = parseBrazilianNumber(findVal(/\.(ValorCofins|vlrCOFINS|vRetCofins|vCofins)$/i));
+    const issRetido = parseBrazilianNumber(findVal(/\.(ValorIssRetido|vlrIssRet|vISSRet)$/i));
+    const genRetencao = parseBrazilianNumber(findVal(/\.(ValorRetencao|vlrRetencao|val_retencao)$/i));
+
+    // Soma tudo para mostrar a retenção total esperada
+    let totalRetention = inss + ir + csll + pis + cofins + issRetido;
+    if (totalRetention === 0 && genRetencao > 0) totalRetention = genRetencao;
+
+    const serviceCode = findVal(/\.(ItemListaServico|codigoServico|cServ|cod_servico|cTribNac)$/i);
+
+    // Se faltar o básico, rejeita
     if (!invoiceNumber || (!providerCnpj && !issuerCnpj) || !serviceValueStr) {
-      console.warn('XML de NFS-e ignorado por falta de dados obrigatórios.');
+      console.warn('XML ignorado: Estrutura não reconhecida ou faltam dados obrigatórios.');
       return null;
     }
 
     return {
-      invoiceNumber: invoiceNumber.toString(),
+      invoiceNumber,
       providerCnpj: cleanCnpj(providerCnpj),
       issuerCnpj: cleanCnpj(issuerCnpj),
-      serviceValue: parseFloat(serviceValueStr.replace(',', '.')),
-      retentionValue: parseFloat(retentionValueStr.replace(',', '.')),
-      serviceCode: serviceCode?.toString(),
+      serviceValue: parseBrazilianNumber(serviceValueStr),
+      retentionValue: totalRetention,
+      serviceCode: serviceCode || undefined,
     };
   } catch (error) {
     console.error('Erro ao fazer parse do XML da NFS-e:', error);
@@ -71,28 +123,38 @@ export async function parseNfseXml(xmlString: string): Promise<ParsedInvoice | n
 export async function parseReinfXml(xmlString: string): Promise<ParsedReinfEvent | null> {
   try {
     const result = await parseStringPromise(xmlString, { explicitArray: false });
+    const flatMap = flattenObject(result);
+    const keys = Object.keys(flatMap);
+
+    const findVal = (regex: RegExp): string => {
+      const matchedKey = keys.find(k => regex.test(k));
+      return matchedKey ? flatMap[matchedKey] : '';
+    };
+
+    let eventType = 'R-2010'; 
+    if (keys.some(k => k.includes('evtServPrest'))) eventType = 'R-2020';
+    if (keys.some(k => k.includes('evtRetPJ'))) eventType = 'R-4020';
+
+    const cnpj = findVal(/\.(nrInscPrest|nrInscTomador|cnpjBenef|cnpjPrestador)$/i);
+    const invoiceReference = findVal(/\.(numDocto|numNF|nrDoc)$/i);
+    const serviceValueStr = findVal(/\.(vlrBruto|vlrTotalBruto|vlrRendimento)$/i);
     
-    // Descobre o tipo de evento (R-2010 ou R-2020)
-    let eventType = 'R-2010'; // Padrão
-    if (findValueByKey(result, 'evtServPrest')) eventType = 'R-2020';
+    const retencaoPrincipal = parseBrazilianNumber(findVal(/\.(vlrRetencao|vlrRetMv)$/i));
+    const retencaoIR = parseBrazilianNumber(findVal(/\.(vlrIR)$/i));
+    const retencaoAgregada = parseBrazilianNumber(findVal(/\.(vlrAgreg)$/i)); 
+    
+    const totalRetention = retencaoPrincipal + retencaoIR + retencaoAgregada;
 
-    // Busca as tags do SPED REINF
-    const cnpj = findValueByKey(result, 'nrInscPrest') || findValueByKey(result, 'nrInscTomador');
-    const invoiceReference = findValueByKey(result, 'numDocto') || findValueByKey(result, 'numNF');
-    const serviceValueStr = findValueByKey(result, 'vlrBruto') || findValueByKey(result, 'vlrTotalBruto');
-    const retentionValueStr = findValueByKey(result, 'vlrRetencao') || findValueByKey(result, 'vlrRetMv');
-
-    if (!cnpj || !invoiceReference || !serviceValueStr) {
-      console.warn('XML do REINF ignorado por falta de dados obrigatórios.');
+    if (!cnpj || (!invoiceReference && eventType !== 'R-4020') || !serviceValueStr) {
       return null;
     }
 
     return {
       eventType,
       cnpj: cleanCnpj(cnpj),
-      invoiceReference: invoiceReference.toString(),
-      serviceValue: parseFloat(serviceValueStr.replace(',', '.')),
-      retentionValue: parseFloat(retentionValueStr ? retentionValueStr.replace(',', '.') : '0'),
+      invoiceReference: invoiceReference || 'N/A',
+      serviceValue: parseBrazilianNumber(serviceValueStr),
+      retentionValue: totalRetention,
     };
   } catch (error) {
     console.error('Erro ao fazer parse do XML do REINF:', error);
