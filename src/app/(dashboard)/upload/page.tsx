@@ -22,10 +22,7 @@ export default function UploadPage() {
   const [competences, setCompetences] = useState<Competence[]>([]);
   const [filteredCompetences, setFilteredCompetences] = useState<Competence[]>([]);
   
-  // Toggle entre Manual e Super Upload
   const [isBulkMode, setIsBulkMode] = useState(false);
-
-  // Estados para o Modal de Resumo
   const [showSummary, setShowSummary] = useState(false);
   const [summaryData, setSummaryData] = useState(null);
   const [foundDivergences, setFoundDivergences] = useState(0);
@@ -39,6 +36,16 @@ export default function UploadPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [statusMessage, setStatusMessage] = useState('');
+
+  // ESTADOS DA NOVA ANIMAÇÃO DE LOADING
+  const [loadingStep, setLoadingStep] = useState(0);
+  const loadingMessages = [
+    "Iniciando leitura dos arquivos...",
+    "Extraindo CNPJs e valores das notas...",
+    "Consultando o Cérebro Tributário...",
+    "Calculando retenções de INSS e Federais...",
+    "Gerando relatório de auditoria..."
+  ];
 
   useEffect(() => {
     fetchCompanies();
@@ -54,6 +61,18 @@ export default function UploadPage() {
       setFilteredCompetences([]);
     }
   }, [selectedCompany, competences]);
+
+  // Efeito para ciclar as mensagens de loading enquanto faz o upload
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isUploading) {
+      setLoadingStep(0);
+      interval = setInterval(() => {
+        setLoadingStep((prev) => (prev < loadingMessages.length - 1 ? prev + 1 : prev));
+      }, 1200); // Muda a mensagem a cada 1.2 segundos para dar sensação de progresso
+    }
+    return () => clearInterval(interval);
+  }, [isUploading]);
 
   const fetchCompanies = async () => {
     try {
@@ -121,27 +140,60 @@ export default function UploadPage() {
         
         setSummaryData(data.summary);
         setFoundDivergences(data.divergencesFound);
-        setShowSummary(true);
-
-        setUploadStatus('success');
-        setStatusMessage(`Processamento concluído com sucesso!`);
-        setNfseFiles([]);
-        setReinfFiles([]);
+        
+        // Pequeno delay para a última mensagem de sucesso aparecer antes do modal
+        setTimeout(() => {
+          setShowSummary(true);
+          setUploadStatus('success');
+          setStatusMessage(`Processamento concluído com sucesso!`);
+          setNfseFiles([]);
+          setReinfFiles([]);
+          setIsUploading(false);
+        }, 800);
       } else {
         const errorData = await response.json();
         setUploadStatus('error');
         setStatusMessage(errorData.error || 'Erro ao processar arquivos.');
+        setIsUploading(false);
       }
     } catch (error) {
       setUploadStatus('error');
       setStatusMessage('Erro de conexão ao enviar os arquivos.');
-    } finally {
       setIsUploading(false);
     }
   };
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto p-4 md:p-0">
+    <div className="space-y-6 max-w-5xl mx-auto p-4 md:p-0 relative">
+      
+      {/* CORTINA DE LOADING PREMIUM */}
+      {isUploading && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
+          <div className="bg-white p-8 rounded-2xl shadow-2xl flex flex-col items-center max-w-sm w-full mx-4 animate-in zoom-in duration-300">
+            {/* Spinner Personalizado */}
+            <div className="relative flex items-center justify-center w-20 h-20 mb-6">
+              <div className="absolute inset-0 border-4 border-purple-100 rounded-full"></div>
+              <div className="absolute inset-0 border-4 border-purple-600 rounded-full border-t-transparent animate-spin"></div>
+              <UploadCloud className="text-purple-600 absolute animate-pulse" size={28} />
+            </div>
+            
+            <h3 className="text-xl font-bold text-slate-800 mb-2">Auditoria em Andamento</h3>
+            
+            <p className="text-sm font-medium text-purple-600 text-center h-5 transition-all">
+              {loadingMessages[loadingStep]}
+            </p>
+            
+            {/* Barra de Progresso */}
+            <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden mt-6">
+              <div 
+                className="bg-purple-600 h-full transition-all duration-500 ease-out"
+                style={{ width: `${((loadingStep + 1) / loadingMessages.length) * 100}%` }}
+              ></div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
@@ -151,23 +203,20 @@ export default function UploadPage() {
           <p className="text-slate-500 mt-1">Envie os XMLs das Notas e os eventos do REINF.</p>
         </div>
 
-        {/* Seletor de Modo - Premium Purple Theme */}
         <div className="bg-slate-100 p-1 rounded-lg flex items-center gap-1">
           <button
             type="button"
             onClick={() => setIsBulkMode(false)}
             className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all ${!isBulkMode ? 'bg-white shadow-sm text-purple-600' : 'text-slate-500 hover:text-slate-700'}`}
           >
-            <Settings2 size={16} />
-            Modo Manual
+            <Settings2 size={16} /> Modo Manual
           </button>
           <button
             type="button"
             onClick={() => setIsBulkMode(true)}
             className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all ${isBulkMode ? 'bg-white shadow-sm text-purple-600' : 'text-slate-500 hover:text-slate-700'}`}
           >
-            <Zap size={16} />
-            Super Upload
+            <Zap size={16} /> Super Upload
           </button>
         </div>
       </div>
@@ -175,7 +224,6 @@ export default function UploadPage() {
       <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
         <form onSubmit={handleSubmit} className="space-y-6">
           
-          {/* Seção de Seleção (MODO MANUAL) */}
           {!isBulkMode ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in duration-300">
               <div>
@@ -221,7 +269,6 @@ export default function UploadPage() {
             </div>
           )}
 
-          {/* Área de Upload */}
           <div className="border-t border-slate-200 pt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center hover:bg-slate-50 transition-colors relative">
               <input type="file" multiple accept=".xml" onChange={handleNfseChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
@@ -248,7 +295,6 @@ export default function UploadPage() {
             </div>
           </div>
 
-          {/* Feedback */}
           {uploadStatus !== 'idle' && (
             <div className={`p-4 border rounded-md flex items-center gap-3 text-sm ${uploadStatus === 'error' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-purple-50 border-purple-200 text-purple-700'}`}>
               {uploadStatus === 'error' ? <AlertCircle size={20} /> : <CheckCircle2 size={20} />}
@@ -263,7 +309,7 @@ export default function UploadPage() {
               className="bg-purple-600 hover:bg-purple-700 text-white px-8 py-3 rounded-md font-medium flex items-center gap-2 transition-all disabled:opacity-50 shadow-md shadow-purple-100 active:scale-95"
             >
               <UploadCloud size={20} />
-              {isUploading ? 'Processando e Validando...' : 'Iniciar Validação Cruzada'}
+              Iniciar Validação Cruzada
             </button>
           </div>
         </form>

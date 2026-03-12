@@ -24,6 +24,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Nenhum arquivo enviado.' }, { status: 400 });
     }
 
+    // Carrega o "Cérebro Tributário" (Regras Fiscais) em memória
+    const taxRules = await prisma.taxRule.findMany();
+    const rulesMap = new Map(taxRules.map(r => [r.serviceCode, r]));
+
     const summary = {
       processed: {} as Record<string, { company: string; invoices: number; events: number }>,
       errors: [] as { file: string; reason: string }[]
@@ -157,12 +161,19 @@ export async function POST(request: Request) {
       const invoices = invoicesByCompetence[compId] || [];
       const events = eventsByCompetence[compId] || [];
 
-      // NOVO FLUXO: Auditoria Prévia Separada por Evento!
+      // NOVO FLUXO: Auditoria Prévia + Cérebro Tributário
       if (invoices.length > 0 && events.length === 0) {
         const pendingActions: any[] = [];
         
         invoices.forEach(inv => {
-          // Checa se tem INSS
+          // Limpa o código de serviço para cruzar corretamente (ex: "07.02")
+          const cleanCode = inv.serviceCode?.replace(/[^\d.]/g, '') || '';
+          const rule = rulesMap.get(cleanCode);
+
+          let inssTriggered = false;
+          let fedTriggered = false;
+
+          // Validação 1: INSS
           if (inv.inssRetention > 0) {
             pendingActions.push({
               status: 'WARNING',
@@ -171,8 +182,20 @@ export async function POST(request: Request) {
               reportedRetention: 0,
               invoiceId: inv.id,
             });
+            inssTriggered = true;
+          } else if (rule?.requireInss) {
+            // Inteligência: XML veio zerado, mas a Regra diz que TEM que ter INSS!
+            pendingActions.push({
+              status: 'ERROR',
+              errorMessage: `[Alerta Fiscal] Regra do cód. ${cleanCode} exige INSS, mas XML não destacou (Nota ${inv.invoiceNumber}).`,
+              expectedRetention: 0,
+              reportedRetention: 0,
+              invoiceId: inv.id,
+            });
+            inssTriggered = true;
           }
-          // Checa se tem Impostos Federais
+
+          // Validação 2: Impostos Federais
           if (inv.fedRetention > 0) {
             pendingActions.push({
               status: 'WARNING',
@@ -181,9 +204,21 @@ export async function POST(request: Request) {
               reportedRetention: 0,
               invoiceId: inv.id,
             });
+            fedTriggered = true;
+          } else if (rule?.requireFed) {
+            // Inteligência: XML veio zerado, mas a Regra diz que TEM que ter Federais!
+            pendingActions.push({
+              status: 'ERROR',
+              errorMessage: `[Alerta Fiscal] Regra do cód. ${cleanCode} exige Federais, mas XML não destacou (Nota ${inv.invoiceNumber}).`,
+              expectedRetention: 0,
+              reportedRetention: 0,
+              invoiceId: inv.id,
+            });
+            fedTriggered = true;
           }
-          // Fallback de segurança para retenções genéricas não identificadas
-          if (inv.inssRetention === 0 && inv.fedRetention === 0 && inv.retentionValue > 0) {
+
+          // Fallback Genérico (Se o XML tiver retenção estranha que não bateu nos filtros)
+          if (!inssTriggered && !fedTriggered && inv.retentionValue > 0) {
             pendingActions.push({
               status: 'WARNING',
               errorMessage: `[Ação Pendente] Declarar retenção genérica no EFD-Reinf da Nota ${inv.invoiceNumber}.`,

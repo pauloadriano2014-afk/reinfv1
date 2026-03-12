@@ -7,7 +7,8 @@ import {
   Building2, 
   CalendarDays, 
   UploadCloud, 
-  AlertTriangle, 
+  AlertTriangle,
+  Scale, 
   LogOut 
 } from 'lucide-react';
 
@@ -22,7 +23,7 @@ export default function Sidebar() {
         </h1>
       </div>
 
-      <nav className="flex-1 py-6 px-4 space-y-2">
+      <nav className="flex-1 py-6 px-4 space-y-2 overflow-y-auto">
         <Link 
           href="/" 
           className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-all ${
@@ -69,6 +70,19 @@ export default function Sidebar() {
         >
           <UploadCloud size={20} className={pathname === '/upload' ? 'text-purple-500' : 'text-slate-400'} />
           <span className="font-medium">Upload de Arquivos</span>
+        </Link>
+
+        {/* NOVO LINK: Regras Fiscais */}
+        <Link 
+          href="/rules" 
+          className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-all ${
+            pathname === '/rules' 
+              ? 'bg-purple-600/10 text-purple-400 border-l-4 border-purple-500 rounded-l-none' 
+              : 'hover:bg-slate-800 hover:text-white'
+          }`}
+        >
+          <Scale size={20} className={pathname === '/rules' ? 'text-purple-500' : 'text-slate-400'} />
+          <span className="font-medium">Regras Fiscais</span>
         </Link>
 
         <Link 

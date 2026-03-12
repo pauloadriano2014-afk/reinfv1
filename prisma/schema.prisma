@@ -80,3 +80,13 @@ model Divergence {
   competence        Competence @relation(fields: [competenceId], references: [id], onDelete: Cascade)
   createdAt         DateTime   @default(now())
 }
+
+model TaxRule {
+  id              String   @id @default(cuid())
+  serviceCode     String   @unique // ex: "07.02" ou "17.06"
+  description     String   // ex: "Execução por empreitada"
+  requireInss     Boolean  @default(false) // Retém Previdência (R-2010/2020)?
+  requireFed      Boolean  @default(false) // Retém IR/CSLL/PIS/COFINS (R-4020)?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
